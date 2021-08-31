@@ -2,20 +2,11 @@
 import groovy.json.JsonSlurperClassic
 node {
 
-    def BUILD_NUMBER=env.BUILD_NUMBER
-    def RUN_ARTIFACT_DIR="tests/${BUILD_NUMBER}"
-    def SFDC_USERNAME
+    def SF_CONSUMER_KEY=env.SF_CONSUMER_KEY
+    def SF_USERNAME=env.SF_USERNAME
+    def SERVER_KEY_CREDENTALS_ID=env.SERVER_KEY_CREDENTALS_ID
+    def SF_INSTANCE_URL = env.SF_INSTANCE_URL ?: "https://login.salesforce.com"
 
-    def HUB_ORG=env.SF_USERNAME
-    def SFDC_HOST = env.SF_INSTANCE_URL
-    def JWT_KEY_CRED_ID = env.SERVER_KEY_CREDENTALS_ID
-    def CONNECTED_APP_CONSUMER_KEY=env.SF_CONSUMER_KEY
-
-    println 'KEY IS' 
-    println JWT_KEY_CRED_ID
-    println HUB_ORG
-    println SFDC_HOST
-    println CONNECTED_APP_CONSUMER_KEY
     def toolbelt = tool 'toolbelt'
 
     stage('checkout source') {
@@ -23,23 +14,53 @@ node {
         checkout scm
     }
 
-    withCredentials([file(credentialsId: JWT_KEY_CRED_ID, variable: 'jwt_key_file')]) {
-        stage('Deploye Code') {
-            if (isUnix()) {
-                rc = sh returnStatus: true, script: "${toolbelt} force:auth:jwt:grant --clientid ${CONNECTED_APP_CONSUMER_KEY} --username ${HUB_ORG} --jwtkeyfile ${jwt_key_file} --setdefaultdevhubusername --instanceurl ${SFDC_HOST}"
-            }else{
-                 rc = bat returnStatus: true, script: "\"${toolbelt}\" force:auth:jwt:grant --clientid ${CONNECTED_APP_CONSUMER_KEY} --username ${HUB_ORG} --jwtkeyfile \"${jwt_key_file}\" --setdefaultdevhubusername --instanceurl ${SFDC_HOST}"
-            }
-            if (rc != 0) { error 'dev hug auth'}
+     withCredentials([file(credentialsId: SERVER_KEY_CREDENTALS_ID, variable: 'server_key_file')]) {
 
-			println rc
+            // -------------------------------------------------------------------------
+            // Authorize the Dev Hub org with JWT key and give it an alias.
+            // -------------------------------------------------------------------------
+
+            stage('Authorize DevHub') {
+                rc = command "${toolbelt}/sfdx auth:jwt:grant --instanceurl ${SF_INSTANCE_URL} --clientid ${SF_CONSUMER_KEY} --username ${SF_USERNAME} --jwtkeyfile ${server_key_file} --setdefaultdevhubusername --setalias HubOrg"
+                if (rc != 0) {
+                    error 'Salesforce dev hub org authorization failed.'
+                }
+            }
 			
-			// need to pull out assigned username
-			if (isUnix()) {
-				rmsg = sh returnStdout: true, script: "${toolbelt} force:source:push -u ${HUB_ORG}"
-			}else{
-			   rmsg = bat returnStdout: true, script: "\"${toolbelt}\" force:source:push -u ${HUB_ORG}"
-			}
+            // Create new scratch org to test your code.
+            // -------------------------------------------------------------------------
+
+            stage('Create Test Scratch Org') {
+                rc = command "${toolbelt} force:org:create --targetdevhubusername HubOrg --setdefaultusername --definitionfile config/project-scratch-def.json --setalias ciorg --wait 10 --durationdays 1"
+                if (rc != 0) {
+                    error 'Salesforce test scratch org creation failed.'
+                }
+            }
+
+
+            // -------------------------------------------------------------------------
+            // Display test scratch org info.
+            // -------------------------------------------------------------------------
+
+            stage('Display Test Scratch Org') {
+                rc = command "${toolbelt} force:org:display --targetusername ciorg"
+                if (rc != 0) {
+                    error 'Salesforce test scratch org display failed.'
+                }
+            }
+
+
+            // -------------------------------------------------------------------------
+            // Push source to test scratch org.
+            // -------------------------------------------------------------------------
+
+            stage('Push To Test Scratch Org') {
+                rc = command "${toolbelt} force:source:push --targetusername ciorg"
+                if (rc != 0) {
+                    error 'Salesforce push to test scratch org failed.'
+                }
+            }
+
 			  
             printf rmsg
             println('Hello from a Job DSL script!')
