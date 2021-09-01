@@ -13,8 +13,6 @@ node {
         // when running in multi-branch job, one must issue this command
         checkout scm
     }
-
-    withEnv(["HOME=${env.WORKSPACE}"]) {
 	    
         withCredentials([file(credentialsId: SERVER_KEY_CREDENTALS_ID, variable: 'server_key_file')]) {
 
@@ -64,7 +62,6 @@ node {
             }
 	}
     }
-}
 
 def command(script) {
     if (isUnix()) {
