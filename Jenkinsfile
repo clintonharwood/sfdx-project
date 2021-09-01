@@ -14,7 +14,9 @@ node {
         checkout scm
     }
 
-     withCredentials([file(credentialsId: SERVER_KEY_CREDENTALS_ID, variable: 'server_key_file')]) {
+    withEnv(["HOME=${env.WORKSPACE}"]) {
+	    
+        withCredentials([file(credentialsId: SERVER_KEY_CREDENTALS_ID, variable: 'server_key_file')]) {
 
             // -------------------------------------------------------------------------
             // Authorize the Dev Hub org with JWT key and give it an alias.
@@ -60,7 +62,7 @@ node {
                     error 'Salesforce push to test scratch org failed.'
                 }
             }
-
+	}
     }
 }
 
